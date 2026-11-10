@@ -288,7 +288,7 @@ export const MultiMethodBenchmarkBar: React.FC<MultiMethodBenchmarkBarProps> = (
                   AI SMART AUTO-SWITCH
                 </span>
                 <span className="text-[11px] text-slate-300 font-sans">
-                  {isAutoSwitchEnabled ? 'ဖွင့်ထားသည် (၁ ကြိမ်ရှုံးလျှင် Lose Rate အများဆုံး Method ကို Lock & Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်း)' : 'ပိတ်ထားသည် (Manual သာ)'}
+                  {isAutoSwitchEnabled ? 'ဖွင့်ထားသည် (၁ ကြိမ်ရှုံးလျှင် ဆက်တိုက်အများဆုံးရှုံး Method ကို Lock & Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်း)' : 'ပိတ်ထားသည် (Manual သာ)'}
                 </span>
               </div>
               <button

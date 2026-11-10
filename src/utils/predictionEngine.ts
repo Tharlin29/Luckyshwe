@@ -336,7 +336,7 @@ export function getHighestWinRateAlgo(stats: AllMethodsStats): AlgorithmType {
   })[0];
 }
 
-export function getHighestLoseRateAlgo(stats: AllMethodsStats): AlgorithmType {
+export function getHighestConsecutiveLossAlgo(stats: AllMethodsStats): AlgorithmType {
   const algos: AlgorithmType[] = ['META_SUPER_AI', 'NEURAL_MATRIX', 'NGRAM_SEQUENCE', 'STATISTICAL_PROB', 'ENSEMBLE', 'HMM', 'MARKOV'];
 
   const getLoseRate = (algo: AlgorithmType): number => {
@@ -350,26 +350,40 @@ export function getHighestLoseRateAlgo(stats: AllMethodsStats): AlgorithmType {
   };
 
   return [...algos].sort((a, b) => {
+    const sA = stats[a];
+    const sB = stats[b];
+
+    // 1. Primary rule: Highest recent consecutive losses (လတ်တလော ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method)
+    const streakA = sA?.streak || 0;
+    const streakB = sB?.streak || 0;
+    const lossStreakA = streakA < 0 ? Math.abs(streakA) : 0;
+    const lossStreakB = streakB < 0 ? Math.abs(streakB) : 0;
+
+    if (lossStreakB !== lossStreakA) {
+      return lossStreakB - lossStreakA; // higher consecutive losses first
+    }
+
+    // 2. Tiebreaker rule: If consecutive losses are equal, choose the one with HIGHEST LOSE RATE
+    // "ဆက်တိုက်အကြိမ်ရေ ရှုံးနေသော Method တူညီများတွေရှိလျှင် ၎င်း တို့အထဲမှ lose rate အများဆုံး Method သို့ Auto change ပေးပြီး"
     const lrA = getLoseRate(a);
     const lrB = getLoseRate(b);
     if (Math.abs(lrB - lrA) > 0.05) {
       return lrB - lrA; // higher lose rate first
     }
-    const streakA = stats[a]?.streak || 0;
-    const streakB = stats[b]?.streak || 0;
-    const lossStreakA = streakA < 0 ? Math.abs(streakA) : 0;
-    const lossStreakB = streakB < 0 ? Math.abs(streakB) : 0;
-    if (lossStreakB !== lossStreakA) {
-      return lossStreakB - lossStreakA; // higher consecutive losses first
-    }
-    const lossesA = stats[a]?.losses || 0;
-    const lossesB = stats[b]?.losses || 0;
+
+    // 3. Third tiebreaker: Highest total losses
+    const lossesA = sA?.losses || 0;
+    const lossesB = sB?.losses || 0;
     if (lossesB !== lossesA) {
-      return lossesB - lossesA; // higher total losses first
+      return lossesB - lossesA;
     }
+
     return algos.indexOf(a) - algos.indexOf(b);
   })[0];
 }
+
+// Alias for backwards compatibility
+export const getHighestLoseRateAlgo = getHighestConsecutiveLossAlgo;
 
 export function evaluateAutoSwitch(
   currentAlgo: AlgorithmType,
@@ -384,10 +398,12 @@ export function evaluateAutoSwitch(
 
   // If already locked onto a method until win under the 1-Loss rule, DO NOT switch until win!
   if (isLockedUntilWin) {
+    const lockedStats = stats[currentAlgo];
+    const lockedStreak = lockedStats?.streak < 0 ? Math.abs(lockedStats.streak) : 0;
     return { 
       shouldSwitch: false, 
       bestAlgo: currentAlgo, 
-      reason: `Method [${stats[currentAlgo]?.label || currentAlgo}] ကို Win မဖြစ်မချင်း Lock ထားပါသဖြင့် ဆက်လက်လောင်းနေပါသည်` 
+      reason: `Method [${lockedStats?.label || currentAlgo}] (${lockedStreak} ကြိမ်ဆက်တိုက်ရှုံး) ကို Win မဖြစ်မချင်း Lock ထားပါသဖြင့် ဆက်လက်လောင်းနေပါသည်` 
     };
   }
 
@@ -401,24 +417,25 @@ export function evaluateAutoSwitch(
     return Number(Math.max(0, 100 - (s.winRate || 50)).toFixed(1));
   };
 
-  const highestLoseRateAlgo = getHighestLoseRateAlgo(stats);
-  const targetStats = stats[highestLoseRateAlgo];
-  const targetLoseRate = getLoseRate(highestLoseRateAlgo);
+  const targetAlgo = getHighestConsecutiveLossAlgo(stats);
+  const targetStats = stats[targetAlgo];
+  const targetStreak = targetStats?.streak < 0 ? Math.abs(targetStats.streak) : 0;
+  const targetLoseRate = getLoseRate(targetAlgo);
 
   // USER SPECIFICATION:
-  // "⚡ 7-METHOD MULTI-AI တွင်ယခင်က နှစ်ကြိမ်ဆက်တိုက်ရှုံးလျှင် win rate များသော Method ကို Auto ချိန်းပေးသည့်စနစ်အစား တကြိမ်ရှုံးလျှင် လက်ရှိ method 7 မျိုးထဲမှ lose rate အများဆုံး Method သို့ Auto change ပေးပြီး win မဖြစ်မချင်း ထို Method ကို lock ၍ Bet ပြီး win ဖြစ်တာနှင့်win rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်း သော စနစ်သို့ ပြောင်းပါ"
+  // "⚡ 7-METHOD MULTI-AI တွင်ယခင်က နှစ်ကြိမ်ဆက်တိုက်ရှုံးလျှင် win rate များသော Method ကို Auto ချိန်းပေးသည့်စနစ်အစား တကြိမ်ရှုံးလျှင် လက်ရှိ method 7 မျိုးထဲမှ လတ်တလော ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေေသာ Method သို့ Auto change ပေးပါ ဆက်တိုက်အကြိမ်ရေ ရှုံးနေသော Method တူညီများတွေရှိလျှင် ၎င်း တို့အထဲမှ lose rate အများဆုံး Method သို့ Auto change ပေးပြီး win မဖြစ်မချင်း ထို Method ကို lock ၍ Bet ပြီး win ဖြစ်တာနှင့်win rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်း သော စနစ်သို့ ပြောင်းပါ"
   if (userConsecutiveLosses >= 1) {
-    if (highestLoseRateAlgo !== currentAlgo) {
+    if (targetAlgo !== currentAlgo) {
       return {
         shouldSwitch: true,
-        bestAlgo: highestLoseRateAlgo,
-        reason: `၁ ကြိမ် ရှုံးသွားပါသဖြင့် Method ၇ မျိုးထဲမှ Lose Rate (${targetLoseRate}%) အများဆုံးဖြစ်သော [${targetStats?.label || highestLoseRateAlgo}] သို့ Auto Change ပေးပြီး Win မဖြစ်မချင်း Lock ထားပါသည်`
+        bestAlgo: targetAlgo,
+        reason: `၁ ကြိမ် ရှုံးသွားပါသဖြင့် Method ၇ မျိုးထဲမှ လတ်တလော ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော (${targetStreak} ကြိမ်ဆက်တိုက်ရှုံး • Lose Rate ${targetLoseRate}%) [${targetStats?.label || targetAlgo}] သို့ Auto Change ပေးပြီး Win မဖြစ်မချင်း Lock ထားပါသည်`
       };
     } else {
       return {
         shouldSwitch: false,
         bestAlgo: currentAlgo,
-        reason: `လက်ရှိ Method [${targetStats?.label || currentAlgo}] သည် Lose Rate (${targetLoseRate}%) အများဆုံးဖြစ်နေသဖြင့် Win မဖြစ်မချင်း Lock ပြုလုပ်ထားပါသည်`
+        reason: `လက်ရှိ Method [${targetStats?.label || currentAlgo}] သည် လတ်တလော ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method (${targetStreak} ကြိမ်ဆက်တိုက်ရှုံး • Lose Rate ${targetLoseRate}%) ဖြစ်နေသဖြင့် Win မဖြစ်မချင်း Lock ပြုလုပ်ထားပါသည်`
       };
     }
   } else {

@@ -130,6 +130,8 @@ export interface AutoMonitoringState {
   bettingEngineMode?: BettingEngineMode;
   sniperStatus?: 'SCANNING_WAIT' | 'LOCKED_BETTING' | 'WON_RESET';
   sniperLockedAlgo?: AlgorithmType | null;
+  progressionMode?: 'MARTINGALE' | 'CUSTOM_SEQUENCE';
+  customSequence?: number[];
 }
 
 export interface AiFormula {

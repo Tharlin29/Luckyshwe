@@ -202,7 +202,7 @@ export const AiModeSwitcherBar: React.FC<AiModeSwitcherBarProps> = ({
               <span>⚡ နည်းပညာ ၇ မျိုး MULTI-AI စနစ်</span>
             </h4>
             <p className="text-xs text-slate-300 mt-1 font-sans leading-relaxed">
-              Meta-Consensus, Neural Matrix, 3-Gram အစရှိသည့် <strong>နည်းပညာ ၇ မျိုး</strong> အနက်မှ စိတ်ကြိုက်ရွေးချယ် သို့မဟုတ် ၁ ကြိမ်ရှုံးပါက Lose Rate အများဆုံး Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းသည့် စနစ်ဖြစ်ပါသည်။
+              Meta-Consensus, Neural Matrix, 3-Gram အစရှိသည့် <strong>နည်းပညာ ၇ မျိုး</strong> အနက်မှ စိတ်ကြိုက်ရွေးချယ် သို့မဟုတ် ၁ ကြိမ်ရှုံးပါက လတ်တလော ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method (တူညီပါက Lose Rate အများဆုံး) သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းသည့် စနစ်ဖြစ်ပါသည်။
             </p>
           </div>
 
@@ -382,7 +382,7 @@ export const AiModeSwitcherBar: React.FC<AiModeSwitcherBarProps> = ({
               </>
             ) : (
               <>
-                လက်ရှိတွင် <strong>နည်းပညာ ၇ မျိုးမှ [{currentAlgorithm}]</strong> ဖြင့် တိုက်ရိုက်ကစားနေပါသည်။ ၁ ကြိမ်ရှုံးပါက Lose Rate အများဆုံး Method ကို Lock ၍ Win မဖြစ်မချင်း ဆက်လောင်းပြီး Win ဖြစ်ပါက Win Rate အမြင့်ဆုံး Method သို့ Auto ပြန်လည်ပြောင်းပေးပါမည်။
+                လက်ရှိတွင် <strong>နည်းပညာ ၇ မျိုးမှ [{currentAlgorithm}]</strong> ဖြင့် တိုက်ရိုက်ကစားနေပါသည်။ ၁ ကြိမ်ရှုံးပါက လတ်တလော ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method (တူညီပါက Lose Rate အများဆုံး) ကို Lock ၍ Win မဖြစ်မချင်း ဆက်လောင်းပြီး Win ဖြစ်ပါက Win Rate အမြင့်ဆုံး Method သို့ Auto ပြန်လည်ပြောင်းပေးပါမည်။
               </>
             )}
           </span>

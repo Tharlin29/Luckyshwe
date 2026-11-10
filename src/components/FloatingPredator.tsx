@@ -827,7 +827,7 @@ export const FloatingPredator: React.FC<FloatingPredatorProps> = ({
               <div className="flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span>
-                  <strong>၁ ကြိမ် Lose & Lock စနစ်</strong>: ၁ ကြိမ်ရှုံးပါက Lose Rate အများဆုံး Method ကို Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်
+                  <strong>၁ ကြိမ် Lose & Lock စနစ်</strong>: ၁ ကြိမ်ရှုံးပါက ဆက်တိုက်အများဆုံးရှုံး Method ကို Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်
                 </span>
               </div>
               {onToggleAutoSwitch && (

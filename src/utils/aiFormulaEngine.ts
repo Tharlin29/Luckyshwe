@@ -83,7 +83,7 @@ export function generateAiFormulaFromHistory(
     burmeseRules = [
       `Rule 1: လက်ရှိနဂါးအရှိန်အတိုင်း ${streakSize === 'BIG' ? 'ကြီး (BIG)' : 'ငယ် (SMALL)'} ဘက်မှ ဦးစားပေး ရွေးချယ်ကစားပါမည်။`,
       `Rule 2: လောင်းကြေးအား ၂ ဆတိုး (2× Multiplier) စနစ်ဖြင့် အဆင့် ၅ ဆင့်အထိ စီမံထားပါသည်။`,
-      `Rule 3: ၁ ကြိမ် ရှုံးပါက Lose Rate အများဆုံး Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်။`,
+      `Rule 3: ၁ ကြိမ် ရှုံးပါက ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်။`,
       `Rule 4: အမြတ် K ${recommendedWinStop.toLocaleString()} MMK ရရှိပါက အလိုအလျောက် ရပ်တန့်အနိုင်ယူပါမည်။`
     ];
   } else if (chopCount >= 3) {
@@ -100,7 +100,7 @@ export function generateAiFormulaFromHistory(
     burmeseRules = [
       `Rule 1: ယခင်ပွဲ၏ ဆန့်ကျင်ဘက် အလှည့်ကျရလဒ်အား N-Gram Pattern ဖြင့် ခန့်မှန်းလောင်းပါမည်။`,
       `Rule 2: Base Stake 10 MMK ဖြင့် ၂ ဆတိုး (2× Multiplier) စနစ်အား ချိတ်ဆက်ထားပါသည်။`,
-      `Rule 3: ၁ ကြိမ် ရှုံးပါက Lose Rate အများဆုံး Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်။`,
+      `Rule 3: ၁ ကြိမ် ရှုံးပါက ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်။`,
       `Rule 4: ပစ်မှတ်အမြတ် K ${recommendedWinStop.toLocaleString()} MMK ပြည့်ပါက Auto Stop ဖြစ်ပါမည်။`
     ];
   } else if (isDoubletRegime) {
@@ -117,7 +117,7 @@ export function generateAiFormulaFromHistory(
     burmeseRules = [
       `Rule 1: Doublet ၂ ကြိမ်တတွဲ လှိုင်းအလိုက် စာရင်းအင်းဖြစ်တန်စွမ်းဖြင့် အကောင်းဆုံးအရွယ်အစားကို ရွေးချယ်ပါမည်။`,
       `Rule 2: လောင်းကြေးကို ၂ ဆတိုး အဆင့်ဆင့်ဖြင့် အမြတ်ထိန်းသိမ်းပါမည်။`,
-      `Rule 3: ၁ ကြိမ် ရှုံးပါက Lose Rate အများဆုံး Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်။`,
+      `Rule 3: ၁ ကြိမ် ရှုံးပါက ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်။`,
       `Rule 4: အရှုံးထိန်းသိမ်းရန် Lose Stop K ${recommendedLoseStop.toLocaleString()} MMK သတ်မှတ်ထားပါသည်။`
     ];
   } else if (Math.abs(bigCount - smallCount) >= 8) {
@@ -134,7 +134,7 @@ export function generateAiFormulaFromHistory(
     burmeseRules = [
       `Rule 1: အထွက်နည်းနေသော ဘက်သို့ ပြန်လည်ချိန်ညှိနိုင်သည့် Deep Neural Matrix ဖြင့် လိုက်လောင်းပါမည်။`,
       `Rule 2: Base Stake 10 MMK အခြေခံ၍ ၂ ဆတိုး (2× Multiplier) စနစ်ဖြင့် ကစားပါမည်။`,
-      `Rule 3: ၁ ကြိမ် ရှုံးပါက Lose Rate အများဆုံး Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်။`,
+      `Rule 3: ၁ ကြိမ် ရှုံးပါက ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်။`,
       `Rule 4: အမြတ် K ${recommendedWinStop.toLocaleString()} MMK ရရှိပါက အနိုင်ဖြင့် Auto Stop ပြုလုပ်ပါမည်။`
     ];
   } else {
@@ -151,7 +151,7 @@ export function generateAiFormulaFromHistory(
     burmeseRules = [
       `Rule 1: နည်းပညာ ၆ မျိုးစလုံး၏ Live Guess များကို Dynamic Weight ဖြင့် ပေါင်းစပ်ဆုံးဖြတ်ပါမည်။`,
       `Rule 2: Base Stake 10 MMK ဖြင့် ၂ ဆတိုး (2× Multiplier) အဆင့်ဆင့် စနစ်တကျ ကစားပါမည်။`,
-      `Rule 3: ၁ ကြိမ် ရှုံးပါက Lose Rate အများဆုံး Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်။`,
+      `Rule 3: ၁ ကြိမ် ရှုံးပါက ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပါမည်။`,
       `Rule 4: သတ်မှတ်အမြတ် K ${recommendedWinStop.toLocaleString()} MMK ရောက်ပါက အလိုအလျောက် အမြတ်ယူရပ်တန့်ပါမည်။`
     ];
   }

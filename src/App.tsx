@@ -328,7 +328,7 @@ export default function App() {
                 }
               }
 
-              // 3. Evaluate Dynamic AI Smart Auto-Switch (၁ ကြိမ်ရှုံးပါက Lose Rate အများဆုံးသို့ Lock ပြုလုပ်ပြီး Win ဖြစ်လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပေးခြင်း)
+              // 3. Evaluate Dynamic AI Smart Auto-Switch (၁ ကြိမ်ရှုံးပါက ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method သို့ Lock ပြုလုပ်ပြီး Win ဖြစ်လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်းပေးခြင်း)
               // Only active when NOT in SNIPER mode (sniper mode locks onto 4-loss, 5-loss, or 6-loss method exclusively until win)
               if (
                 isAutoSwitchEnabledRef.current && 
@@ -950,7 +950,7 @@ export default function App() {
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                    နည်းပညာ ၇ မျိုး၏ Real-Time Win Rate စာရင်း၊ တပြိုင်နက် ခန့်မှန်းချက်များနှင့် ၁ ကြိမ်ရှုံး Lose Rate အများဆုံး Auto-Switch & Lock စနစ် (နှိပ်၍ အသေးစိတ် ကြည့်ရှုနိုင်ပါသည်)
+                    နည်းပညာ ၇ မျိုး၏ Real-Time Win Rate စာရင်း၊ တပြိုင်နက် ခန့်မှန်းချက်များနှင့် ၁ ကြိမ်ရှုံး ဆက်တိုက်အများဆုံးရှုံး Auto-Switch & Lock စနစ် (နှိပ်၍ အသေးစိတ် ကြည့်ရှုနိုင်ပါသည်)
                   </p>
                 </div>
               </div>

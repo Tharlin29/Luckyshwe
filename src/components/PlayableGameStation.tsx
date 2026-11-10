@@ -24,13 +24,14 @@ import {
   Settings,
   HelpCircle,
   Cpu,
-  Crosshair
+  Crosshair,
+  Sliders
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { WingoDraw, PredictionResult, ShweAccount, AlgorithmType, AllMethodsStats, AutoSwitchEvent, AutoMonitoringState, AiFormula, BettingEngineMode } from '../types/lottery';
 import { playWinSound, playYouWinVoice, playTickSound, playMyanmarTargetProfitVoice, playRadarLockSound, playSniperStrikeSound, playStartBettingVoice } from '../utils/audio';
 import { evaluateAllMethodsLossStreaks } from '../utils/sniper6LossEngine';
-import { calculateAllPredictions, getHighestWinRateAlgo, getHighestLoseRateAlgo } from '../utils/predictionEngine';
+import { calculateAllPredictions, getHighestWinRateAlgo, getHighestLoseRateAlgo, getHighestConsecutiveLossAlgo } from '../utils/predictionEngine';
 
 interface PlayableGameStationProps {
   currentPeriod: string;
@@ -92,6 +93,26 @@ export function normalizeShweBetAmount(rawAmount: number, rawBetCount: number = 
     const count = Math.max(1, Math.round(total / 10));
     return { amount: 10, betCount: count, total: count * 10 };
   }
+}
+
+// Calculate step stake supporting both Martingale multiplier and Custom Sequence (e.g. 20, 40, 60, 80, 160, 320, 640, 1280)
+export function calculateStepStake(
+  lossCount: number,
+  mode: 'MARTINGALE' | 'CUSTOM_SEQUENCE',
+  baseAmount: number,
+  multiplier: number,
+  sequence: number[]
+): number {
+  if (mode === 'CUSTOM_SEQUENCE' && Array.isArray(sequence) && sequence.length > 0) {
+    if (lossCount < sequence.length) {
+      return sequence[lossCount];
+    }
+    const last = sequence[sequence.length - 1];
+    const overflow = lossCount - (sequence.length - 1);
+    return Math.round(last * Math.pow(2, overflow));
+  }
+  if (lossCount === 0) return baseAmount;
+  return Math.round(baseAmount * Math.pow(multiplier, lossCount));
 }
 
 // Streak detector for Wait Bot (Dragon Hunter)
@@ -205,19 +226,61 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
   }, []);
 
   // ==========================================
-  // AUTO BET ONLY STATE & MARTINGALE PROGRESSION
+  // AUTO BET ONLY STATE & PROGRESSION (MARTINGALE & CUSTOM SEQUENCE)
   // ==========================================
   const [isAutoBetActive, setIsAutoBetActive] = useState<boolean>(false);
+
+  // Progression Mode: 'CUSTOM_SEQUENCE' (User's custom steps e.g. 20, 40, 60, 80, 160, 320, 640, 1280) vs 'MARTINGALE' (Multiplier)
+  const [progressionMode, setProgressionMode] = useState<'MARTINGALE' | 'CUSTOM_SEQUENCE'>(() => {
+    try {
+      const saved = localStorage.getItem('shwe_progression_mode');
+      if (saved === 'MARTINGALE' || saved === 'CUSTOM_SEQUENCE') return saved;
+    } catch {}
+    return 'CUSTOM_SEQUENCE';
+  });
+
+  // User-defined custom step sequence (e.g. 20, 40, 60, 80, 160, 320, 640, 1280)
+  const [customSequence, setCustomSequence] = useState<number[]>(() => {
+    try {
+      const saved = localStorage.getItem('shwe_custom_bet_sequence');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [20, 40, 60, 80, 160, 320, 640, 1280];
+  });
+
+  const [customSequenceInput, setCustomSequenceInput] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('shwe_custom_bet_sequence');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed.join(', ');
+      }
+    } catch {}
+    return '20, 40, 60, 80, 160, 320, 640, 1280';
+  });
+
   const [autoMultiplierMode, setAutoMultiplierMode] = useState<number>(2); // 2X, 3X, custom
   const [isCustomMultiplier, setIsCustomMultiplier] = useState<boolean>(false);
   const [customMultiplierInput, setCustomMultiplierInput] = useState<string>('2.5');
 
-  const [autoBaseAmount, setAutoBaseAmount] = useState<number>(10);
+  const [autoBaseAmount, setAutoBaseAmount] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('shwe_custom_bet_sequence');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
+      }
+    } catch {}
+    return 20;
+  });
   const [isCustomBaseAmount, setIsCustomBaseAmount] = useState<boolean>(false);
-  const [customBaseAmountInput, setCustomBaseAmountInput] = useState<string>('10');
+  const [customBaseAmountInput, setCustomBaseAmountInput] = useState<string>('20');
 
   const [consecutiveLosses, setConsecutiveLosses] = useState<number>(0);
-  const [currentAutoStake, setCurrentAutoStake] = useState<number>(10);
+  const [currentAutoStake, setCurrentAutoStake] = useState<number>(20);
   const [autoStrategy, setAutoStrategy] = useState<'AI_GUESS' | 'WAIT_BOT' | 'SNIPER_4LOSS' | 'SNIPER_5LOSS' | 'SNIPER_6LOSS'>('AI_GUESS');
   const [autoWins, setAutoWins] = useState<number>(0);
   const [autoLosses, setAutoLosses] = useState<number>(0);
@@ -403,6 +466,17 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
     }
   }, [isAutoBetActive, onAutoBetActiveChange]);
 
+  const progressionModeRef = useRef<'MARTINGALE' | 'CUSTOM_SEQUENCE'>(progressionMode);
+  const customSequenceRef = useRef<number[]>(customSequence);
+
+  useEffect(() => {
+    progressionModeRef.current = progressionMode;
+  }, [progressionMode]);
+
+  useEffect(() => {
+    customSequenceRef.current = customSequence;
+  }, [customSequence]);
+
   useEffect(() => {
     winStopEnabledRef.current = winStopEnabled;
     winStopAmountRef.current = winStopAmount;
@@ -418,7 +492,9 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
     sniperLockedAlgoRef.current = sniperLockedAlgo;
     sevenMethodLockedAlgoRef.current = sevenMethodLockedAlgo;
     botStartTimeRef.current = botStartTime;
-  }, [winStopEnabled, winStopAmount, loseStopEnabled, loseStopAmount, autoBaseAmount, autoMultiplierMode, autoStrategy, waitStreakThreshold, waitBotStatus, waitBotTarget, sniperBotStatus, sniperLockedAlgo, sevenMethodLockedAlgo, botStartTime]);
+    progressionModeRef.current = progressionMode;
+    customSequenceRef.current = customSequence;
+  }, [winStopEnabled, winStopAmount, loseStopEnabled, loseStopAmount, autoBaseAmount, autoMultiplierMode, autoStrategy, waitStreakThreshold, waitBotStatus, waitBotTarget, sniperBotStatus, sniperLockedAlgo, sevenMethodLockedAlgo, botStartTime, progressionMode, customSequence]);
 
   useEffect(() => {
     nonStopAutoBetRef.current = nonStopAutoBet;
@@ -450,9 +526,11 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
       targetReachedDuration: targetProfitDuration,
       nonStopAutoBet,
       nonStopCountdown,
-      nonStopWaitSeconds
+      nonStopWaitSeconds,
+      progressionMode,
+      customSequence
     });
-  }, [isAutoBetActive, autoProfit, autoWins, autoLosses, currentAutoStake, autoBaseAmount, consecutiveLosses, autoMultiplierMode, winStopEnabled, winStopAmount, loseStopEnabled, loseStopAmount, stopReason, autoStrategy, botStartTime, botElapsedSeconds, targetProfitDuration, nonStopAutoBet, nonStopCountdown, nonStopWaitSeconds]);
+  }, [isAutoBetActive, autoProfit, autoWins, autoLosses, currentAutoStake, autoBaseAmount, consecutiveLosses, autoMultiplierMode, winStopEnabled, winStopAmount, loseStopEnabled, loseStopAmount, stopReason, autoStrategy, botStartTime, botElapsedSeconds, targetProfitDuration, nonStopAutoBet, nonStopCountdown, nonStopWaitSeconds, progressionMode, customSequence]);
 
   // Live timer tick for Auto Bot
   useEffect(() => {
@@ -495,15 +573,51 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
     };
   }, [nonStopAutoBet, stopReason, nonStopCountdown]);
 
-  // Recalculate current auto stake when base amount or multiplier changes
+  // Recalculate current auto stake when base amount, multiplier, progression mode, or custom sequence changes
   useEffect(() => {
-    if (consecutiveLosses === 0) {
-      setCurrentAutoStake(autoBaseAmount);
-    } else {
-      const nextStake = Math.round(autoBaseAmount * Math.pow(autoMultiplierMode, consecutiveLosses));
-      setCurrentAutoStake(nextStake);
+    const nextStake = calculateStepStake(
+      consecutiveLosses,
+      progressionMode,
+      autoBaseAmount,
+      autoMultiplierMode,
+      customSequence
+    );
+    setCurrentAutoStake(nextStake);
+  }, [autoBaseAmount, autoMultiplierMode, consecutiveLosses, progressionMode, customSequence]);
+
+  // Custom Sequence Handlers
+  const handleUpdateCustomSequence = (rawText: string) => {
+    setCustomSequenceInput(rawText);
+    const parsed = rawText
+      .split(/[\s,;]+/)
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !isNaN(n) && n > 0);
+    if (parsed.length > 0) {
+      setCustomSequence(parsed);
+      setAutoBaseAmount(parsed[0]);
+      if (consecutiveLosses === 0) {
+        setCurrentAutoStake(parsed[0]);
+      }
+      try {
+        localStorage.setItem('shwe_custom_bet_sequence', JSON.stringify(parsed));
+      } catch {}
     }
-  }, [autoBaseAmount, autoMultiplierMode, consecutiveLosses]);
+  };
+
+  const handleSelectProgressionMode = (mode: 'MARTINGALE' | 'CUSTOM_SEQUENCE') => {
+    setProgressionMode(mode);
+    try {
+      localStorage.setItem('shwe_progression_mode', mode);
+    } catch {}
+    const newStake = calculateStepStake(
+      consecutiveLosses,
+      mode,
+      autoBaseAmount,
+      autoMultiplierMode,
+      customSequence
+    );
+    setCurrentAutoStake(newStake);
+  };
 
   // Reset Session
   const handleResetAutoSession = () => {
@@ -512,7 +626,14 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
     setAutoProfit(0);
     consecutiveLossesRef.current = 0;
     setConsecutiveLosses(0);
-    setCurrentAutoStake(autoBaseAmount);
+    const resetStake = calculateStepStake(
+      0,
+      progressionMode,
+      autoBaseAmount,
+      autoMultiplierMode,
+      customSequence
+    );
+    setCurrentAutoStake(resetStake);
     setStopReason(null);
     setWaitBotStatus('WAITING');
     waitBotStatusRef.current = 'WAITING';
@@ -795,7 +916,13 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
       // "user win ဖြစ်ပြီးတာနဲ့ နောက်တစ်ကြိမ် bet တဲ့ အခါ step 1 ( base stake) သို့ပြန်လည်သတ်မှတ် bet ရပါမည်"
       consecutiveLossesRef.current = 0;
       setConsecutiveLosses(0);
-      const resetStake = autoBaseAmountRef.current;
+      const resetStake = calculateStepStake(
+        0,
+        progressionModeRef.current,
+        autoBaseAmountRef.current,
+        autoMultiplierModeRef.current,
+        customSequenceRef.current
+      );
       setCurrentAutoStake(resetStake);
 
       const wasSevenMethodLocked = sevenMethodLockedAlgoRef.current !== null;
@@ -896,7 +1023,13 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
         consecutiveLossesRef.current = nextLosses;
         setConsecutiveLosses(nextLosses);
         const mult = autoMultiplierModeRef.current;
-        const nextStake = Math.round(autoBaseAmountRef.current * Math.pow(mult, nextLosses));
+        const nextStake = calculateStepStake(
+          nextLosses,
+          progressionModeRef.current,
+          autoBaseAmountRef.current,
+          mult,
+          customSequenceRef.current
+        );
         setCurrentAutoStake(nextStake);
 
         const isSniperActive =
@@ -907,33 +1040,39 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
           bettingEngineMode === 'SNIPER_5LOSS_MODE' ||
           bettingEngineMode === 'SNIPER_6LOSS_MODE';
 
+        const stepText = progressionModeRef.current === 'CUSTOM_SEQUENCE'
+          ? `Custom အဆင့်: Step ${nextLosses + 1}/${customSequenceRef.current.length} (K ${nextStake.toLocaleString()} MMK)`
+          : `${mult}× ဆတိုး: K ${nextStake.toLocaleString()} MMK (အဆင့်: ${nextLosses + 1})`;
+
         if (!isSniperActive && methodStats) {
           if (!sevenMethodLockedAlgoRef.current) {
-            const highestLoseAlgo = getHighestLoseRateAlgo(methodStats);
-            sevenMethodLockedAlgoRef.current = highestLoseAlgo;
-            setSevenMethodLockedAlgo(highestLoseAlgo);
-            onSevenMethodLockedAlgoChange?.(highestLoseAlgo);
-            if (onChangeAiAlgorithm && highestLoseAlgo !== aiAlgorithm) {
-              onChangeAiAlgorithm(highestLoseAlgo);
+            const targetAlgo = getHighestConsecutiveLossAlgo(methodStats);
+            sevenMethodLockedAlgoRef.current = targetAlgo;
+            setSevenMethodLockedAlgo(targetAlgo);
+            onSevenMethodLockedAlgoChange?.(targetAlgo);
+            if (onChangeAiAlgorithm && targetAlgo !== aiAlgorithm) {
+              onChangeAiAlgorithm(targetAlgo);
             }
             if (soundEnabledRef.current && bettingEngineMode === 'METHODS_7_MODE') {
               try { playRadarLockSound(); } catch {}
             }
-            const targetStats = methodStats[highestLoseAlgo];
+            const targetStats = methodStats[targetAlgo];
+            const targetStreak = targetStats?.streak < 0 ? Math.abs(targetStats.streak) : 0;
             const totalT = targetStats ? (targetStats.total || (targetStats.wins + targetStats.losses)) : 0;
             const targetLoseRate = targetStats 
               ? (totalT > 0 ? ((targetStats.losses / totalT) * 100).toFixed(1) : (100 - targetStats.winRate).toFixed(1))
               : '0';
-            setAutoFeedback(`⚡ [7-METHOD 1-LOSS AUTO-SWITCH] ၁ ကြိမ် ရှုံးသွားပါသဖြင့် Method ၇ မျိုးထဲမှ Lose Rate (${targetLoseRate}%) အများဆုံးဖြစ်သော [${targetStats?.label || highestLoseAlgo}] သို့ Auto Switch ပေးပြီး Win မဖြစ်မချင်း Lock ထားပါသည်! (${mult}× ဆတိုး: K ${nextStake.toLocaleString()} MMK)`);
+            setAutoFeedback(`⚡ [7-METHOD 1-LOSS AUTO-SWITCH] ၁ ကြိမ် ရှုံးသွားပါသဖြင့် Method ၇ မျိုးထဲမှ လတ်တလော ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော (${targetStreak} ကြိမ်ဆက်တိုက်ရှုံး • Lose Rate ${targetLoseRate}%) [${targetStats?.label || targetAlgo}] သို့ Auto Switch ပေးပြီး Win မဖြစ်မချင်း Lock ထားပါသည်! (${stepText})`);
           } else {
             const lockedAlgo = sevenMethodLockedAlgoRef.current;
             const targetStats = methodStats[lockedAlgo];
-            setAutoFeedback(`🔒 [7-METHOD LOCKED HOLD] Lose Rate အများဆုံး Lock Method [${targetStats?.label || lockedAlgo}] ဖြင့် Win မဖြစ်မချင်း ${mult}× ဆတိုးပြီး K ${nextStake.toLocaleString()} MMK ဆက်လက်လောင်းပါမည်! (အဆင့်: ${nextLosses + 1})`);
+            const targetStreak = targetStats?.streak < 0 ? Math.abs(targetStats.streak) : 0;
+            setAutoFeedback(`🔒 [7-METHOD LOCKED HOLD] ဆက်တိုက်ရှုံး Lock Method [${targetStats?.label || lockedAlgo}] (${targetStreak} ကြိမ်ရှုံး) ဖြင့် Win မဖြစ်မချင်း ${stepText} ဆက်လက်လောင်းပါမည်!`);
           }
         } else if (isSniperActive) {
-          setAutoFeedback(`⚠️ [SNIPER STRIKE HOLD] Locked Method [${sniperLockedAlgoRef.current || 'Sniper'}] ဖြင့် Win မဖြစ်မချင်း ${mult}× ဆတိုးပြီး K ${nextStake.toLocaleString()} MMK ဆက်လက်လောင်းပါမည်! (Strike အဆင့်: ${nextLosses + 1})`);
+          setAutoFeedback(`⚠️ [SNIPER STRIKE HOLD] Locked Method [${sniperLockedAlgoRef.current || 'Sniper'}] ဖြင့် Win မဖြစ်မချင်း ${stepText} ဆက်လက်လောင်းပါမည်!`);
         } else {
-          setAutoFeedback(`⚠️ [Auto Bet #${lastBetPeriod ? lastBetPeriod.slice(-5) : 'LIVE'}] ရှုံးသဖြင့် ${mult}× ဆတိုးပြီး နောက်ပွဲအတွက် K ${nextStake.toLocaleString()} MMK သတ်မှတ်လိုက်ပါပြီ! (အဆင့်: ${nextLosses + 1})`);
+          setAutoFeedback(`⚠️ [Auto Bet #${lastBetPeriod ? lastBetPeriod.slice(-5) : 'LIVE'}] ရှုံးသဖြင့် ${stepText} သတ်မှတ်လိုက်ပါပြီ!`);
         }
       }
     }
@@ -1006,9 +1145,13 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
         ? 0 
         : consecutiveLossesRef.current;
 
-      let requiredStake = currentLosses === 0
-        ? autoBaseAmountRef.current
-        : Math.round(autoBaseAmountRef.current * Math.pow(autoMultiplierModeRef.current, currentLosses));
+      let requiredStake = calculateStepStake(
+        currentLosses,
+        progressionModeRef.current,
+        autoBaseAmountRef.current,
+        autoMultiplierModeRef.current,
+        customSequenceRef.current
+      );
 
       if (userBalance < requiredStake) {
         setIsAutoBetActive(false);
@@ -1148,7 +1291,10 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
       const nextActiveBets = [newAutoBet, ...activeBetsRef.current.slice(0, 19)];
       activeBetsRef.current = nextActiveBets;
       setActiveBets(nextActiveBets);
-      setAutoFeedback(`⚡ [Auto Bet #${currentPeriod.slice(-5)}] ShweLottery game website သို့ K ${effectiveStake.toLocaleString()} MMK (${normalized.amount} × ${normalized.betCount}) [${currentLosses > 0 ? `${autoMultiplierModeRef.current}× အဆင့် ${currentLosses + 1}` : 'မူလစတင်ငွေ (Step 1)'}] လောင်းနေပါသည်...`);
+      const stepDesc = progressionModeRef.current === 'CUSTOM_SEQUENCE'
+        ? `Custom Step ${currentLosses + 1}/${customSequenceRef.current.length}`
+        : (currentLosses > 0 ? `${autoMultiplierModeRef.current}× အဆင့် ${currentLosses + 1}` : 'မူလစတင်ငွေ (Step 1)');
+      setAutoFeedback(`⚡ [Auto Bet #${currentPeriod.slice(-5)}] ShweLottery game website သို့ K ${effectiveStake.toLocaleString()} MMK (${normalized.amount} × ${normalized.betCount}) [${stepDesc}] လောင်းနေပါသည်...`);
       playTickSound();
 
       // EXECUTE REAL BET ON SHWELOTTERY OFFICIAL SERVER
@@ -1521,8 +1667,8 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
                   : bettingEngineMode === 'FORMULA_MODE'
                   ? `Formula: ${activeFormula?.code || 'Active'} • ${activeFormula?.burmeseTitle || ''} • (Base: K ${autoBaseAmount.toLocaleString()} • Win Stop: ${winStopEnabled ? '+' + winStopAmount.toLocaleString() : 'OFF'} • Lose Stop: ${loseStopEnabled ? '-' + loseStopAmount.toLocaleString() : 'OFF'} • ${autoMultiplierMode}× Mult)`
                   : sevenMethodLockedAlgo
-                  ? `Method: [${sevenMethodLockedAlgo}] • 🔒 ၁ ကြိမ်ရှုံးသဖြင့် Lose Rate အများဆုံး Method ကို Lock ထားပြီး Win မဖြစ်မချင်း ဤ Method ဖြင့်သာ လောင်းပါမည်`
-                  : `Method: [${aiAlgorithm}] • တိုက်ရိုက်ရွေးချယ်ထားသော စနစ်ဖြင့် လောင်းနေပါသည် (၁ ကြိမ်ရှုံးလျှင် Lose Rate အများဆုံး Method သို့ Auto-Switch & Lock)`}
+                  ? `Method: [${sevenMethodLockedAlgo}] • 🔒 ၁ ကြိမ်ရှုံးသဖြင့် ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method ကို Lock ထားပြီး Win မဖြစ်မချင်း ဤ Method ဖြင့်သာ လောင်းပါမည်`
+                  : `Method: [${aiAlgorithm}] • တိုက်ရိုက်ရွေးချယ်ထားသော စနစ်ဖြင့် လောင်းနေပါသည် (၁ ကြိမ်ရှုံးလျှင် ဆက်တိုက်အများဆုံးရှုံး Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်း)`}
               </span>
             </div>
           </div>
@@ -1685,7 +1831,7 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
               K {currentAutoStake.toLocaleString()}
             </span>
             <span className="text-[10px] text-slate-500 font-mono block">
-              Base: K {autoBaseAmount}
+              {progressionMode === 'CUSTOM_SEQUENCE' ? `Step 1: K ${customSequence[0]?.toLocaleString()}` : `Base: K ${autoBaseAmount.toLocaleString()}`}
             </span>
           </div>
 
@@ -1694,8 +1840,10 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
             <span className="text-lg sm:text-xl font-tech font-bold text-white font-mono block">
               Step {consecutiveLosses + 1}
             </span>
-            <span className="text-[10px] text-amber-400/90 font-mono block">
-              {consecutiveLosses > 0 ? `${autoMultiplierMode}× Multiplier` : 'Base Stake'}
+            <span className="text-[10px] text-amber-400/90 font-mono block truncate">
+              {progressionMode === 'CUSTOM_SEQUENCE'
+                ? `Custom (${customSequence.length} Steps)`
+                : (consecutiveLosses > 0 ? `${autoMultiplierMode}× Multiplier` : 'Base Stake')}
             </span>
           </div>
 
@@ -1912,7 +2060,9 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
               className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-200 text-xs font-mono font-bold flex items-center gap-2 border border-slate-700/80 transition-all shadow active:scale-95"
             >
               <Settings className="w-4 h-4 text-amber-400" />
-              <span>Auto Bet Settings ({autoBaseAmount} MMK • {autoMultiplierMode}×)</span>
+              <span>
+                Auto Bet Settings ({progressionMode === 'CUSTOM_SEQUENCE' ? `${customSequence.length} Steps Custom (K ${customSequence[0]} MMK)` : `${autoBaseAmount} MMK • ${autoMultiplierMode}×`})
+              </span>
             </button>
 
             <button
@@ -2279,140 +2429,336 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
                 )}
               </div>
 
-              {/* 2. Martingale Multiplier & Progression System */}
-              <div className="space-y-3 pt-2 border-t border-slate-800">
-                <div className="flex items-center justify-between">
+              {/* 2. Bet Amount Progression & Multiplier System (Dual-Mode: Custom Sequence vs Martingale) */}
+              <div className="space-y-3.5 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <label className="text-xs font-mono font-bold text-slate-300 uppercase block">
-                    2. ရှုံးပါက ဆတိုးစနစ် (MARTINGALE MULTIPLIER):
+                    2. အဆင့်ဆင့် လောင်းကြေး သတ်မှတ်ခြင်းစနစ် (BET PROGRESSION SYSTEM):
                   </label>
                   <span className="text-[11px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-                    လက်ရှိ: {autoMultiplierMode}× ဆတိုး
+                    {progressionMode === 'CUSTOM_SEQUENCE' 
+                      ? `🎯 Custom (${customSequence.length} Steps: K ${customSequence[0]} ~ K ${customSequence[customSequence.length - 1]})` 
+                      : `⚡ ${autoMultiplierMode}× ဆတိုး (Martingale)`}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                  {[
-                    { mult: 2, label: '2X', desc: 'Classic Martingale' },
-                    { mult: 3, label: '3X', desc: 'Aggressive' },
-                    { mult: 4, label: '4X', desc: 'Super Fast' },
-                    { mult: 5, label: '5X', desc: 'Ultra Max' },
-                  ].map((item) => (
-                    <button
-                      key={item.mult}
-                      type="button"
-                      onClick={() => {
-                        setAutoMultiplierMode(item.mult);
-                        setIsCustomMultiplier(false);
-                      }}
-                      className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
-                        !isCustomMultiplier && autoMultiplierMode === item.mult
-                          ? 'bg-amber-500/25 border-amber-400 text-amber-300 shadow-lg ring-1 ring-amber-400/50'
-                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
-                      }`}
-                    >
-                      <span className="text-base font-tech font-black block">{item.label}</span>
-                      <span className="text-[9px] text-slate-400 font-mono block truncate">{item.desc}</span>
-                    </button>
-                  ))}
+                {/* Mode Selector Tabs */}
+                <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectProgressionMode('CUSTOM_SEQUENCE')}
+                    className={`py-2 px-3 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      progressionMode === 'CUSTOM_SEQUENCE'
+                        ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20 font-black'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                    }`}
+                  >
+                    <span>🎯 စိတ်ကြိုက်အဆင့်ဆင့်သတ်မှတ်ရန် (Custom)</span>
+                  </button>
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsCustomMultiplier(true);
-                      const parsed = parseFloat(customMultiplierInput);
-                      if (!isNaN(parsed) && parsed >= 1.1) {
-                        setAutoMultiplierMode(parsed);
-                      }
-                    }}
-                    className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
-                      isCustomMultiplier
-                        ? 'bg-amber-500/25 border-amber-400 text-amber-300 shadow-lg ring-1 ring-amber-400/50'
-                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                    onClick={() => handleSelectProgressionMode('MARTINGALE')}
+                    className={`py-2 px-3 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      progressionMode === 'MARTINGALE'
+                        ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20 font-black'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-900'
                     }`}
                   >
-                    <span className="text-base font-tech font-black block">Custom</span>
-                    <span className="text-[9px] text-slate-400 font-mono block">စိတ်ကြိုက်</span>
+                    <span>⚡ ဆတိုးစနစ် (Martingale Mult)</span>
                   </button>
                 </div>
 
-                {isCustomMultiplier && (
-                  <div className="p-3 rounded-xl bg-slate-950 border border-amber-500/30 space-y-2 animate-in fade-in">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-mono text-slate-300">စိတ်ကြိုက် Multiplier ထည့်ပါ (၁.၁ မှ ၁၀ အထိ):</span>
-                      <span className="font-mono font-bold text-amber-400">{autoMultiplierMode}× Active</span>
+                {/* TAB 1: CUSTOM PROGRESSION SEQUENCE (User Request: 20, 40, 60, 80, 160, 320, 640, 1280) */}
+                {progressionMode === 'CUSTOM_SEQUENCE' ? (
+                  <div className="p-3.5 rounded-xl bg-slate-950 border border-amber-500/40 space-y-3 animate-in fade-in">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="text-amber-400 font-bold flex items-center gap-1.5">
+                        <Sliders className="w-3.5 h-3.5" />
+                        စိတ်ကြိုက် အဆင့်ဆင့်လောင်းကြေးများ ထည့်သွင်းပါ:
+                      </span>
+                      <span className="text-slate-400 font-bold">
+                        စုစုပေါင်း မတည်ငွေ: <strong className="text-white">K {customSequence.reduce((a, b) => a + b, 0).toLocaleString()} MMK</strong>
+                      </span>
                     </div>
+
+                    {/* Comma-separated input row */}
                     <div className="flex items-center gap-2">
                       <div className="relative flex-1">
                         <input
-                          type="number"
-                          step="0.1"
-                          min="1.1"
-                          max="10"
-                          value={customMultiplierInput}
-                          onChange={(e) => {
-                            setCustomMultiplierInput(e.target.value);
-                            const parsed = parseFloat(e.target.value);
-                            if (!isNaN(parsed) && parsed >= 1.1 && parsed <= 10) {
-                              setAutoMultiplierMode(parsed);
+                          type="text"
+                          value={customSequenceInput}
+                          onChange={(e) => setCustomSequenceInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleUpdateCustomSequence(customSequenceInput);
+                              setAutoFeedback(`စိတ်ကြိုက် Bet Sequence (${customSequence.length} Steps) သတ်မှတ်ပြီးပါပြီ`);
                             }
                           }}
-                          className="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 rounded-lg px-3 py-1.5 text-amber-300 font-mono font-bold text-sm outline-none"
-                          placeholder="ဥပမာ: 2.5"
+                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-amber-500/50 text-amber-300 font-mono font-bold text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          placeholder="ဥပမာ: 20, 40, 60, 80, 160, 320, 640, 1280"
                         />
-                        <span className="absolute right-3 top-2 text-xs font-mono text-slate-400 font-bold">×</span>
                       </div>
-                      {[1.5, 2.5, 3.5].map((preset) => (
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleUpdateCustomSequence(customSequenceInput);
+                          setAutoFeedback(`စိတ်ကြိုက် Bet Sequence သတ်မှတ်ပြီးပါပြီ (Step 1: K ${customSequence[0]} MMK)`);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black font-mono text-xs shadow active:scale-95 shrink-0"
+                      >
+                        သတ်မှတ်မည်
+                      </button>
+                    </div>
+
+                    {/* Presets Chips */}
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[10px] text-slate-400 font-mono font-bold block">
+                        အသင့်သုံး အဆင့်ဆင့် Pattern များ ရွေးရန်:
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {[
+                          {
+                            label: '⭐ 20, 40, 60, 80, 160, 320, 640, 1280 (8 Steps)',
+                            seq: [20, 40, 60, 80, 160, 320, 640, 1280]
+                          },
+                          {
+                            label: '10, 20, 30, 60, 120, 240, 480, 960 (Budget 8 Steps)',
+                            seq: [10, 20, 30, 60, 120, 240, 480, 960]
+                          },
+                          {
+                            label: '20, 50, 100, 200, 400, 800, 1600 (7 Steps)',
+                            seq: [20, 50, 100, 200, 400, 800, 1600]
+                          },
+                          {
+                            label: '10, 20, 40, 80, 160, 320, 640, 1280 (Double 8 Steps)',
+                            seq: [10, 20, 40, 80, 160, 320, 640, 1280]
+                          }
+                        ].map((preset, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              const text = preset.seq.join(', ');
+                              handleUpdateCustomSequence(text);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-mono border font-bold transition-all active:scale-95 ${
+                              customSequence.join(',') === preset.seq.join(',')
+                                ? 'bg-amber-500/20 border-amber-400 text-amber-300 ring-1 ring-amber-400/40'
+                                : 'bg-slate-900 hover:bg-slate-850 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Interactive Step-by-Step Preview Grid */}
+                    <div className="pt-2 border-t border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-mono">
+                        <span className="text-slate-300 font-bold">
+                          လက်ရှိ သတ်မှတ်ထားသော အဆင့်ဆင့်လောင်းကြေးများ ({customSequence.length} Steps):
+                        </span>
+                        <span className="text-emerald-400 font-bold">
+                          Step 1 Win Reset 100% Guaranteed
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1.5 text-center">
+                        {customSequence.map((amt, idx) => {
+                          const isCurrent = consecutiveLosses === idx;
+                          return (
+                            <div
+                              key={idx}
+                              className={`p-2 rounded-xl border font-mono transition-all relative ${
+                                isCurrent
+                                  ? 'bg-amber-500/25 border-amber-400 text-amber-300 ring-2 ring-amber-400/60 shadow font-bold'
+                                  : idx === 0
+                                  ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
+                                  : 'bg-slate-900/70 border-slate-800 text-slate-300'
+                              }`}
+                            >
+                              <div className="text-[9px] uppercase font-bold text-slate-400">
+                                {idx === 0 ? 'Step 1 (Win Reset)' : `Step ${idx + 1} (${idx}L)`}
+                              </div>
+                              <div className="text-xs font-black text-white mt-1">
+                                K {amt.toLocaleString()}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Quick Add / Remove step controls */}
+                      <div className="flex items-center justify-between text-xs font-mono pt-1">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const last = customSequence[customSequence.length - 1] || 1280;
+                              const updated = [...customSequence, last * 2];
+                              handleUpdateCustomSequence(updated.join(', '));
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-700 text-[10px] font-bold"
+                          >
+                            + နောက်တစ်ဆင့် ထပ်တိုးမည် ({customSequence[customSequence.length - 1] * 2} MMK)
+                          </button>
+
+                          {customSequence.length > 2 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = customSequence.slice(0, -1);
+                                handleUpdateCustomSequence(updated.join(', '));
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-rose-300 border border-slate-700 text-[10px] font-bold"
+                            >
+                              - နောက်ဆုံးအဆင့် လျှော့မည်
+                            </button>
+                          )}
+                        </div>
+
+                        <span className="text-[10px] text-slate-400">
+                          အများဆုံးခံနိုင်ရည်: {customSequence.length - 1} ကြိမ်ဆက်တိုက်ရှုံး
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Step 1 Guarantee Callout */}
+                    <div className="text-[10px] text-emerald-300 font-sans leading-relaxed bg-emerald-500/10 p-2.5 rounded-xl border border-emerald-500/30">
+                      🛡️ <strong>အနိုင်ရရှိပါက Step 1 သို့ မဖြစ်မနေ ပြန်စသည့်စနစ်:</strong> မည်သည့်အဆင့် (Step 1 မှ Step {customSequence.length}) တွင်မဆို အနိုင်ရရှိ (WIN) ဖြစ်သည်နှင့် နောက်တစ်ကြိမ် လောင်းကြေးကို Step 1 (မူလစတင်ငွေ <strong className="text-white font-mono">K {customSequence[0]?.toLocaleString()} MMK</strong>) သို့ ချက်ချင်း 100% ပြန်လည်သတ်မှတ်ပြီး လောင်းပါမည်။
+                    </div>
+                  </div>
+                ) : (
+                  /* TAB 2: CLASSIC MARTINGALE MULTIPLIER */
+                  <div className="space-y-3 animate-in fade-in">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {[
+                        { mult: 2, label: '2X', desc: 'Classic Martingale' },
+                        { mult: 3, label: '3X', desc: 'Aggressive' },
+                        { mult: 4, label: '4X', desc: 'Super Fast' },
+                        { mult: 5, label: '5X', desc: 'Ultra Max' },
+                      ].map((item) => (
                         <button
-                          key={preset}
+                          key={item.mult}
                           type="button"
                           onClick={() => {
-                            setCustomMultiplierInput(String(preset));
-                            setAutoMultiplierMode(preset);
+                            setAutoMultiplierMode(item.mult);
+                            setIsCustomMultiplier(false);
                           }}
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-mono border border-slate-700 font-bold cursor-pointer"
+                          className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                            !isCustomMultiplier && autoMultiplierMode === item.mult
+                              ? 'bg-amber-500/25 border-amber-400 text-amber-300 shadow-lg ring-1 ring-amber-400/50'
+                              : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                          }`}
                         >
-                          {preset}×
+                          <span className="text-base font-tech font-black block">{item.label}</span>
+                          <span className="text-[9px] text-slate-400 font-mono block truncate">{item.desc}</span>
                         </button>
                       ))}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomMultiplier(true);
+                          const parsed = parseFloat(customMultiplierInput);
+                          if (!isNaN(parsed) && parsed >= 1.1) {
+                            setAutoMultiplierMode(parsed);
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                          isCustomMultiplier
+                            ? 'bg-amber-500/25 border-amber-400 text-amber-300 shadow-lg ring-1 ring-amber-400/50'
+                            : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <span className="text-base font-tech font-black block">Custom</span>
+                        <span className="text-[9px] text-slate-400 font-mono block">စိတ်ကြိုက်</span>
+                      </button>
+                    </div>
+
+                    {isCustomMultiplier && (
+                      <div className="p-3 rounded-xl bg-slate-950 border border-amber-500/30 space-y-2 animate-in fade-in">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-mono text-slate-300">စိတ်ကြိုက် Multiplier ထည့်ပါ (၁.၁ မှ ၁၀ အထိ):</span>
+                          <span className="font-mono font-bold text-amber-400">{autoMultiplierMode}× Active</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="1.1"
+                              max="10"
+                              value={customMultiplierInput}
+                              onChange={(e) => {
+                                setCustomMultiplierInput(e.target.value);
+                                const parsed = parseFloat(e.target.value);
+                                if (!isNaN(parsed) && parsed >= 1.1 && parsed <= 10) {
+                                  setAutoMultiplierMode(parsed);
+                                }
+                              }}
+                              className="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 rounded-lg px-3 py-1.5 text-amber-300 font-mono font-bold text-sm outline-none"
+                              placeholder="ဥပမာ: 2.5"
+                            />
+                            <span className="absolute right-3 top-2 text-xs font-mono text-slate-400 font-bold">×</span>
+                          </div>
+                          {[1.5, 2.5, 3.5].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => {
+                                setCustomMultiplierInput(String(preset));
+                                setAutoMultiplierMode(preset);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-mono border border-slate-700 font-bold cursor-pointer"
+                            >
+                              {preset}×
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step-by-Step Stake Progression Preview Table */}
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-mono">
+                        <span className="text-slate-400">ဆတိုးအဆင့်ဆင့် လောင်းကြေး တွက်ချက်မှု Preview:</span>
+                        <span className="text-emerald-400 font-bold">✨ WIN ဖြစ်ပါက Step 1 သို့ အလိုအလျောက် ပြန်စမည်</span>
+                      </div>
+                      <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5 text-center">
+                        {[0, 1, 2, 3, 4, 5, 6].map((lossStep) => {
+                          const stake = Math.round(autoBaseAmount * Math.pow(autoMultiplierMode, lossStep));
+                          const isCurrentStep = consecutiveLosses === lossStep;
+                          return (
+                            <div
+                              key={lossStep}
+                              className={`p-1.5 rounded-lg border text-[10px] font-mono transition-all ${
+                                isCurrentStep
+                                  ? 'bg-amber-500/25 border-amber-400 text-amber-300 ring-1 ring-amber-400/50 shadow font-bold'
+                                  : lossStep === 0
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                  : 'bg-slate-900/60 border-slate-800 text-slate-400'
+                              }`}
+                            >
+                              <div className="font-bold text-[9px] text-slate-400">
+                                {lossStep === 0 ? 'Step 1 (Base)' : `Step ${lossStep + 1} (${lossStep}L)`}
+                              </div>
+                              <div className="font-black text-[11px] text-slate-200 mt-0.5">
+                                K {stake.toLocaleString()}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="text-[10px] text-emerald-400/90 font-sans leading-relaxed bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
+                        🛡️ <strong>အာမခံစနစ်:</strong> မည်သည့် Step (အဆင့်) တွင်မဆို အနိုင်ရရှိ (WIN) ဖြစ်သည်နှင့် နောက်တစ်ကြိမ်တွင် Step 1 (မူလစတင်ငွေ K {autoBaseAmount.toLocaleString()} MMK) သို့ ချက်ချင်း 100% ပြန်လည်သတ်မှတ်ပြီး လောင်းပါမည်။
+                      </div>
                     </div>
                   </div>
                 )}
-
-                {/* Step-by-Step Stake Progression Preview Table */}
-                <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2">
-                  <div className="flex items-center justify-between text-[11px] font-mono">
-                    <span className="text-slate-400">ဆတိုးအဆင့်ဆင့် လောင်းကြေး တွက်ချက်မှု Preview:</span>
-                    <span className="text-emerald-400 font-bold">✨ WIN ဖြစ်ပါက Step 1 သို့ အလိုအလျောက် ပြန်စမည်</span>
-                  </div>
-                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5 text-center">
-                    {[0, 1, 2, 3, 4, 5, 6].map((lossStep) => {
-                      const stake = Math.round(autoBaseAmount * Math.pow(autoMultiplierMode, lossStep));
-                      const isCurrentStep = consecutiveLosses === lossStep;
-                      return (
-                        <div
-                          key={lossStep}
-                          className={`p-1.5 rounded-lg border text-[10px] font-mono transition-all ${
-                            isCurrentStep
-                              ? 'bg-amber-500/25 border-amber-400 text-amber-300 ring-1 ring-amber-400/50 shadow font-bold'
-                              : lossStep === 0
-                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                              : 'bg-slate-900/60 border-slate-800 text-slate-400'
-                          }`}
-                        >
-                          <div className="font-bold text-[9px] text-slate-400">
-                            {lossStep === 0 ? 'Step 1 (Base)' : `Step ${lossStep + 1} (${lossStep}L)`}
-                          </div>
-                          <div className="font-black text-[11px] text-slate-200 mt-0.5">
-                            K {stake.toLocaleString()}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="text-[10px] text-emerald-400/90 font-sans leading-relaxed bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
-                    🛡️ <strong>အာမခံစနစ်:</strong> မည်သည့် Step (အဆင့်) တွင်မဆို အနိုင်ရရှိ (WIN) ဖြစ်သည်နှင့် နောက်တစ်ကြိမ်တွင် Step 1 (မူလစတင်ငွေ K {autoBaseAmount.toLocaleString()} MMK) သို့ ချက်ချင်း 100% ပြန်လည်သတ်မှတ်ပြီး လောင်းပါမည်။
-                  </div>
-                </div>
               </div>
 
               {/* 3. Auto Strategy */}
@@ -2434,7 +2780,7 @@ export const PlayableGameStation: React.FC<PlayableGameStationProps> = ({
                     }`}
                   >
                     <div className="text-sm font-bold block mb-0.5 text-cyan-300">⚡ Follow AI (၇ မျိုး)</div>
-                    <span className="text-[10px] text-slate-400 font-sans font-normal block leading-tight">Meta-Consensus AI နည်းပညာ (၇) မျိုးမှ အကောင်းဆုံး Method အတိုင်း လိုက်လောင်းသည် (၁ ကြိမ်ရှုံးလျှင် Lose Rate အများဆုံး Method သို့ Auto-Switch & Lock)</span>
+                    <span className="text-[10px] text-slate-400 font-sans font-normal block leading-tight">Meta-Consensus AI နည်းပညာ (၇) မျိုးမှ အကောင်းဆုံး Method အတိုင်း လိုက်လောင်းသည် (၁ ကြိမ်ရှုံးလျှင် ဆက်တိုက်အကြိမ်ရေ အများဆုံးရှုံးနေသော Method သို့ Auto-Switch & Lock ၍ Win လျှင် Win Rate အမြင့်ဆုံးသို့ Auto ပြန်ချိန်း)</span>
                   </button>
 
                   <button
